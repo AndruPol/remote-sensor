@@ -10,14 +10,14 @@ extern "C" {
 #include "ch.h"
 #include "hal.h"
 
-#define SENSORSNUM		0 		// число внешних датчиков
-#define SENSORSALL		1		// общее число датчиков
-#define BATTSENSOR		0		// номер датчика контроля напряжения батареи PB.00
-#define ADC_TIMEOUT_MS	100		// задержка опроса датчиков, мсек
+#define SENSORSNUM		0 		// С‡РёСЃР»Рѕ РІРЅРµС€РЅРёС… РґР°С‚С‡РёРєРѕРІ
+#define SENSORSALL		1		// РѕР±С‰РµРµ С‡РёСЃР»Рѕ РґР°С‚С‡РёРєРѕРІ
+#define BATTSENSOR		0		// РЅРѕРјРµСЂ РґР°С‚С‡РёРєР° РєРѕРЅС‚СЂРѕР»СЏ РЅР°РїСЂСЏР¶РµРЅРёСЏ Р±Р°С‚Р°СЂРµРё PB.00
+#define ADC_TIMEOUT_MS	100		// Р·Р°РґРµСЂР¶РєР° РѕРїСЂРѕСЃР° РґР°С‚С‡РёРєРѕРІ, РјСЃРµРє
 
-// значения АЦП
-#define BATTERYNORMA	995		// значение "норма" для батареи > 3.1V
-#define BATTERYLOW		500		// значение для обнаружения низкого заряда батареи < 3V
+// Р·РЅР°С‡РµРЅРёСЏ РђР¦Рџ
+#define BATTERYNORMA	995		// Р·РЅР°С‡РµРЅРёРµ "РЅРѕСЂРјР°" РґР»СЏ Р±Р°С‚Р°СЂРµРё > 3.1V
+#define BATTERYLOW		500		// Р·РЅР°С‡РµРЅРёРµ РґР»СЏ РѕР±РЅР°СЂСѓР¶РµРЅРёСЏ РЅРёР·РєРѕРіРѕ Р·Р°СЂСЏРґР° Р±Р°С‚Р°СЂРµРё < 3V
 
 typedef enum {
 	ADC_NO_ERROR,
@@ -25,11 +25,11 @@ typedef enum {
 	ADC_TIMEOUT,
 } adc_error_t;
 
-// описание датчика
+// РѕРїРёСЃР°РЅРёРµ РґР°С‚С‡РёРєР°
 typedef struct _sensor sensor_t;
 struct _sensor{
-	uint8_t  type;		// тип датчика: 0 - не используется, 1 - датчик, 2 - контроль питания
-	uint16_t value;		// последнее значение считанное АЦП
+	uint8_t  type;		// С‚РёРї РґР°С‚С‡РёРєР°: 0 - РЅРµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ, 1 - РґР°С‚С‡РёРє, 2 - РєРѕРЅС‚СЂРѕР»СЊ РїРёС‚Р°РЅРёСЏ
+	uint16_t value;		// РїРѕСЃР»РµРґРЅРµРµ Р·РЅР°С‡РµРЅРёРµ СЃС‡РёС‚Р°РЅРЅРѕРµ РђР¦Рџ
 };
 
 typedef struct _adc_read_t adc_read_t;
@@ -39,11 +39,11 @@ struct _adc_read_t {
 };
 
 #define ADC_PRIO	NORMALPRIO
-extern adc_read_t sensors;			// описание датчиков
+extern adc_read_t sensors;			// РѕРїРёСЃР°РЅРёРµ РґР°С‚С‡РёРєРѕРІ
 
-// инициализация АЦП
+// РёРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РђР¦Рџ
 void sensors_init(void);
-// чтение значений ADC
+// С‡С‚РµРЅРёРµ Р·РЅР°С‡РµРЅРёР№ ADC
 adc_error_t sensors_read(void);
 
 #ifdef __cplusplus

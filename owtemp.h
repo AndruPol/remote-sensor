@@ -11,10 +11,10 @@
 extern "C" {
 #endif
 
-typedef struct _ow_temp_t ow_temp_t;	// описание датчика температуры DS1820B
+typedef struct _ow_temp_t ow_temp_t;	// РѕРїРёСЃР°РЅРёРµ РґР°С‚С‡РёРєР° С‚РµРјРїРµСЂР°С‚СѓСЂС‹ DS1820B
 struct _ow_temp_t {
-	uint8_t key[8];			// идентификатор датчика DS1820B
-	float	value;			// значение датчика
+	uint8_t key[8];			// РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РґР°С‚С‡РёРєР° DS1820B
+	float	value;			// Р·РЅР°С‡РµРЅРёРµ РґР°С‚С‡РёРєР°
 };
 
 typedef enum {

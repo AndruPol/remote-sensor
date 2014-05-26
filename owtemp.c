@@ -16,24 +16,24 @@
 #include <string.h>
 
 //#define ARRAY_LEN(a) 		(sizeof(a)/sizeof(a[0]))
-#define OWSCAN_TIMEOUT_MS	250	// задержка сканирования датчиков температуры (мсек)
-#define OWTEMPCONV			190	// задержка конвертирования (мсек) для датчиков температуры DS1820B
-#define OWTEMPPREC			10	// точность преобразования для датчиков температуры
+#define OWSCAN_TIMEOUT_MS	250	// Р·Р°РґРµСЂР¶РєР° СЃРєР°РЅРёСЂРѕРІР°РЅРёСЏ РґР°С‚С‡РёРєРѕРІ С‚РµРјРїРµСЂР°С‚СѓСЂС‹ (РјСЃРµРє)
+#define OWTEMPCONV			190	// Р·Р°РґРµСЂР¶РєР° РєРѕРЅРІРµСЂС‚РёСЂРѕРІР°РЅРёСЏ (РјСЃРµРє) РґР»СЏ РґР°С‚С‡РёРєРѕРІ С‚РµРјРїРµСЂР°С‚СѓСЂС‹ DS1820B
+#define OWTEMPPREC			10	// С‚РѕС‡РЅРѕСЃС‚СЊ РїСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёСЏ РґР»СЏ РґР°С‚С‡РёРєРѕРІ С‚РµРјРїРµСЂР°С‚СѓСЂС‹
 
 static OneWireRomAddress romAddr[OWDEVICES];
 
-// признак инициализации oneWire
+// РїСЂРёР·РЅР°Рє РёРЅРёС†РёР°Р»РёР·Р°С†РёРё oneWire
 extern bool_t ow_initialized;
 
 extern OneWireDriver owDrv;
 extern const OneWireConfig owCfg;
 extern BinarySemaphore owsem;
 
-ow_temp_read_t	ow_temp_read;	// возвращает значения температуры и признак ошибки
+ow_temp_read_t	ow_temp_read;	// РІРѕР·РІСЂР°С‰Р°РµС‚ Р·РЅР°С‡РµРЅРёСЏ С‚РµРјРїРµСЂР°С‚СѓСЂС‹ Рё РїСЂРёР·РЅР°Рє РѕС€РёР±РєРё
 static BinarySemaphore owtempsem;
 
 /*
- * Процесс сканирования температурных датчиков DS1820B
+ * РџСЂРѕС†РµСЃСЃ СЃРєР°РЅРёСЂРѕРІР°РЅРёСЏ С‚РµРјРїРµСЂР°С‚СѓСЂРЅС‹С… РґР°С‚С‡РёРєРѕРІ DS1820B
 */
 static Thread *OWTempThread_p;
 static WORKING_AREA(waOWTempThread, 256);
@@ -82,7 +82,7 @@ static msg_t OWTempThread(void *arg) {
   }//while
 }
 
-// получает значения с температурных датчиков DS1820B
+// РїРѕР»СѓС‡Р°РµС‚ Р·РЅР°С‡РµРЅРёСЏ СЃ С‚РµРјРїРµСЂР°С‚СѓСЂРЅС‹С… РґР°С‚С‡РёРєРѕРІ DS1820B
 ow_temp_error_t owtemp_read(void) {
 	ow_temp_read_t *ow_temp_read_p = &ow_temp_read;
 
@@ -100,10 +100,10 @@ ow_temp_error_t owtemp_read(void) {
 	return ow_temp_read.error;
 }
 
-// создает процесс опроса датчиков DS1820B
+// СЃРѕР·РґР°РµС‚ РїСЂРѕС†РµСЃСЃ РѕРїСЂРѕСЃР° РґР°С‚С‡РёРєРѕРІ DS1820B
 void ow_temp_init(void){
 	chBSemInit(&owtempsem, FALSE);
 	oneWireInit(&owDrv,&owCfg);
-	// Создаем процесс опроса датчиков 1-wire
+	// РЎРѕР·РґР°РµРј РїСЂРѕС†РµСЃСЃ РѕРїСЂРѕСЃР° РґР°С‚С‡РёРєРѕРІ 1-wire
 	OWTempThread_p = chThdCreateStatic(waOWTempThread, sizeof(waOWTempThread), OWTEMP_PRIO, OWTempThread, NULL);
 }

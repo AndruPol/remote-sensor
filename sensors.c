@@ -18,10 +18,10 @@
 
 #include "sensors.h"
 
-adc_read_t sensors;							// описание датчиков
-static BinarySemaphore adcsem, adc_cbsem;	// семафор управления процессом adc
+adc_read_t sensors;							// РѕРїРёСЃР°РЅРёРµ РґР°С‚С‡РёРєРѕРІ
+static BinarySemaphore adcsem, adc_cbsem;	// СЃРµРјР°С„РѕСЂ СѓРїСЂР°РІР»РµРЅРёСЏ РїСЂРѕС†РµСЃСЃРѕРј adc
 
-static adcsample_t samples[SENSORSALL];	// буфер чтения АЦП
+static adcsample_t samples[SENSORSALL];	// Р±СѓС„РµСЂ С‡С‚РµРЅРёСЏ РђР¦Рџ
 
 static void adccallback(ADCDriver *adcp, adcsample_t *buffer, size_t n);
 static void adcerrcallback(ADCDriver *adcp, adcerror_t err);
@@ -105,7 +105,7 @@ static void adcerrcallback(ADCDriver *adcp, adcerror_t err) {
 }
 
 /*
- *  процесс опроса датчиков АЦП
+ *  РїСЂРѕС†РµСЃСЃ РѕРїСЂРѕСЃР° РґР°С‚С‡РёРєРѕРІ РђР¦Рџ
  */
 static Thread *ADCThread_p;
 WORKING_AREA(waADCThread, 128);
@@ -131,9 +131,9 @@ msg_t ADCThread(void *arg) {
 			req->error = ADC_TIMEOUT;
 		}
 		if (req->error == ADC_NO_ERROR) {
-			// датчик напряжения аккумулятора
+			// РґР°С‚С‡РёРє РЅР°РїСЂСЏР¶РµРЅРёСЏ Р°РєРєСѓРјСѓР»СЏС‚РѕСЂР°
 			req->sensor[BATTSENSOR].value = samples[BATTSENSOR];
-			// остальные датчики
+			// РѕСЃС‚Р°Р»СЊРЅС‹Рµ РґР°С‚С‡РёРєРё
 			for (uint8_t i = 0; i < SENSORSNUM; i++){
 				req->sensor[i].value = samples[i];
 			}
