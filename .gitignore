@@ -2,3 +2,6 @@
 .settings
 build/lst
 build/obj
+build/rsensor.hex
+build/rsensor.dmp
+build/rsensor.map
