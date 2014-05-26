@@ -1,0 +1,49 @@
+Configuration	stm32f103c_mini
+Date	08/20/2013
+MCU	STM32F103C(8-B)Tx
+
+
+
+PERIPHERALS	MODES							REMAP	FUNCTIONS		PINS
+SPI1		Full-Duplex-Master_With-NSS		0		SPI1_MISO		PA6
+SPI1		Full-Duplex-Master_With-NSS		0		SPI1_MOSI		PA7
+SPI1		Full-Duplex-Master_With-NSS		0		SPI1_NSS		PA4
+SPI1		Full-Duplex-Master_With-NSS		0		SPI1_SCK		PA5
+I2C1		I2C								0		I2C1_SCL		PB6
+I2C1		I2C								0		I2C1_SDA		PB7
+USART1		Half-duplex(single-wire-mode)	0		USART1_TX		PA9
+USB			USB_FS							0		USB_USBDM		PA11
+USB			USB_FS							0		USB_USBDP		PA12
+TIM2		PWM_INPUT						1		TIM2_CH1		PA15
+TIM2		PWM_INPUT						1		TIM2_CH2		PB3
+ADC1		IN2								0		ADC1_IN2		PA2
+ADC1		IN3								0		ADC1_IN3		PA3
+ADC1		IN8								0		ADC1_IN8		PB0
+ADC1		IN9								0		ADC1_IN9		PB1
+SYS			Serial-Wire						0		SYS_JTCK-SWCLK	PA14
+SYS			Serial-Wire						0		SYS_JTMS-SWDIO	PA13
+SYS			SYS-OSC32						0		SYS_OSC32_IN	PC14-OSC32_IN
+SYS			SYS-OSC32						0		SYS_OSC32_OUT	PC15-OSC32_OUT
+
+
+
+POS	PIN			FUNCTION			Used
+10	PA15		TIM2_CH1			AM2302
+11	PB3			TIM2_CH2			AM2302
+12	PA2			USART2_TX			Serial console
+13	PA3			USART2_RX			Serial console
+14	PA4			SPI1_NSS			NRF24L01+
+15	PA5			SPI1_SCK			NRF24L01+
+16	PA6			SPI1_MISO			NRF24L01+
+17	PA7			SPI1_MOSI			NRF24L01+
+18	PB0			ADC1_IN8			Battery voltage
+19	PB1			ADC1_IN9			NU
+25	PB12		Output_Push-Pull	NU
+26	PB13		Output_Push-Pull	Sensors power control
+27	PB14		Input_Floating		Stop mode switch
+28	PB15		Output_Push-Pull	State LED
+30	PA9			USART1_TX			1-Wire driver
+42	PB6			I2C1_SCL			BH1750
+43	PB7			I2C1_SDA			BH1750
+45	PB8			Output_Push-Pull	NRF24L01+ CE
+46	PB9			Input_Floating		NRF24L01+ IRQ
