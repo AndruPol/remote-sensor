@@ -1,5 +1,7 @@
 .dep
 .settings
+.cproject
+.project
 build/lst
 build/obj
 build/rsensor.hex
