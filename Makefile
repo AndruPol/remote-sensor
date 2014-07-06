@@ -30,7 +30,7 @@ endif
 
 # Enable this if you want to see the full log while compiling.
 ifeq ($(USE_VERBOSE_COMPILE),)
-  USE_VERBOSE_COMPILE = no
+  USE_VERBOSE_COMPILE = yes
 endif
 
 #
@@ -58,12 +58,13 @@ endif
 PROJECT = rsensor
 
 # Imported source files and paths
-CHIBIOS = ../chibios/ChibiOS_2.6.0
-include $(CHIBIOS)/boards/STM32F103C_MINNI/board.mk
+CHIBIOS = ../chibios/ChibiOS_2.6.4
+include STM32F103C_MINI/board.mk
 include $(CHIBIOS)/os/hal/platforms/STM32F1xx/platform.mk
 include $(CHIBIOS)/os/hal/hal.mk
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/STM32F1xx/port.mk
 include $(CHIBIOS)/os/kernel/kernel.mk
+include aes/aes.mk 
 
 # Define linker script file here
 LDSCRIPT= STM32F103x8.ld
@@ -80,11 +81,13 @@ CSRC = $(PORTSRC) \
        $(CHIBIOS)/os/various/chrtclib.c \
        $(CHIBIOS)/os/various/chprintf.c \
        owtemp.c ds1820b.c oneWire.c \
+       $(AESSRC) \
        am2302.c \
        bh1750.c \
        nrf24l01.c nrf_spi.c \
-       sensors.c \
        main.c
+
+#       sensors.c \
 
 # C++ sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -115,7 +118,7 @@ ASMSRC = $(PORTASM)
 
 INCDIR = $(PORTINC) $(KERNINC) \
          $(HALINC) $(PLATFORMINC) $(BOARDINC) \
-         $(CHIBIOS)/os/various
+         $(CHIBIOS)/os/various $(AESINC)
 
 #
 # Project, sources and paths

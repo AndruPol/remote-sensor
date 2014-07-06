@@ -13,10 +13,10 @@
 #define DHT_PKT_SIZE 			5
 #define DHT_PKT_TIMEOUT_MS 	10
 
-#define DHT_CHANNEL1_GPIO		GPIOA
-#define DHT_CHANNEL2_GPIO		GPIOB
-#define DHT_CHANNEL1_PIN		15
-#define DHT_CHANNEL2_PIN		3
+#define DHT_CHANNEL1_GPIO		GPIOA /* channel 1 GPIO */
+#define DHT_CHANNEL2_GPIO		GPIOB /* channel 2 GPIO */
+#define DHT_CHANNEL1_PIN		15 /* channel 1 PIN */
+#define DHT_CHANNEL2_PIN		3 /* channel 2 PIN */
 #define DHT_CHANNEL1			ICU_CHANNEL_1
 #define DHT_CHANNEL2			ICU_CHANNEL_2
 
@@ -65,7 +65,8 @@ static ICUConfig icucfgch1 = {
   icuwidthcb,
   icuperiodcb,
   icuoverflowcb,
-  DHT_CHANNEL1
+  DHT_CHANNEL1,
+  0
 };
 
 static ICUConfig icucfgch2 = {
@@ -74,7 +75,8 @@ static ICUConfig icucfgch2 = {
   icuwidthcb,
   icuperiodcb,
   icuoverflowcb,
-  DHT_CHANNEL2
+  DHT_CHANNEL2,
+  0
 };
 
 /*
@@ -201,7 +203,7 @@ dht_error_t dht_read(uint8_t channel, int *temperature, int *humidity) {
 
 	/* compute checksum */
 	unsigned int sum = 0;
-	int i;
+	uint8_t i;
 	for(i = 0; i < DHT_PKT_SIZE - 1; i++) sum += rd.data[i];
 	if((sum & 0xff) != rd.data[i]) {
 		return DHT_CHECKSUM_ERROR;

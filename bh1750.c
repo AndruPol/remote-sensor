@@ -23,6 +23,7 @@ bh1750_error_t bh1750_read(int16_t *value) {
 
   bh1750_error_t err = BH1750_NO_ERROR;
 
+  i2cStart(&I2CD_BH1750, &i2cfg);
   i2cAcquireBus(&I2CD_BH1750);
   txbuf[0] = BH1750_CONT_HMODE;
   if (i2cMasterTransmitTimeout(&I2CD_BH1750, BH1750_ADDR, txbuf, 1, rxbuf, 0, MS2ST(BH1750_TIMEOUT_MS)) != RDY_OK){
@@ -37,6 +38,7 @@ bh1750_error_t bh1750_read(int16_t *value) {
 
 error:
   i2cReleaseBus(&I2CD_BH1750);
+  i2cStop(&I2CD_BH1750);
 
   if (err != BH1750_NO_ERROR){
 	  return err;
@@ -48,7 +50,6 @@ error:
 
 void bh1750_init(void) {
   // Start the i2c driver
-  i2cStart(&I2CD_BH1750, &i2cfg);
   palSetPadMode(GPIOB, GPIOB_PIN6, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
   palSetPadMode(GPIOB, GPIOB_PIN7, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
 }

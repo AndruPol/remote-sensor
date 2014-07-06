@@ -27,15 +27,31 @@
 #include "main.h"
 #include "owtemp.h"
 #include "oneWire.h"
-#include "sensors.h"
 #include "nrf24l01.h"
 #include "am2302.h"
 #include "bh1750.h"
 
-#include "shell.h"
-
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
-//#define USE_SHELL		// ChibiOS shell use
+
+#define DEBUG		0	// print debug to console
+#define USE_SHELL	0	// ChibiOS shell use
+#define ADC			0
+#define AES			1	// encrypt message
+
+#if USE_SHELL
+#include "shell.h"
+#endif
+
+#if ADC
+#include "sensors.h"
+#endif
+
+#if AES
+#include "aes/inc/aes.h"
+#include "aes/inc/aes_user_options.h"
+#include "aes_secret.h"
+static aes_data_t aes_data;
+#endif
 
 static VirtualTimer delayTimer;
 static EVENTSOURCE_DECL(delay_evsrc);
@@ -50,18 +66,30 @@ OneWireDriver owDrv;
 BinarySemaphore owsem;
 const OneWireConfig owCfg = { .dqPort = GPIOA,
 				     	 	   .dqPad =  GPIOA_USART1_TX,
-				     	 	   .dqAlternate = 7,
+				     	 	   .dqAlternate = 7,	// not used for stm32f1xx
 				     	 	   .uartd = &UARTD1
 							};
 
 static uint8_t workcnt;		// work mode delay counter
 
-// convert 6 byte array NRF24L01 address to string: AFAFAFAFAF\0
+// convert 5 byte array NRF24L01 address to string: AFAFAFAFAF\0
 void addr_hexstr(uint8_t *addr, uint8_t *str){
     uint8_t *pin = addr;
-    static const uint8_t *hex = "0123456789ABCDEF";
+    const char *hex = "0123456789ABCDEF";
     uint8_t *pout = str;
     for(uint8_t i=0; i < 5; i++){
+        *pout++ = hex[(*pin>>4)&0xF];
+        *pout++ = hex[(*pin++)&0xF];
+    }
+    *pout = 0;
+}
+
+// convert 1-wire 8 bytes address to char[17]
+void owkey_hexstr(uint8_t *addr, uint8_t *str){
+    uint8_t *pin = addr;
+    const char *hex = "0123456789ABCDEF";
+    uint8_t *pout = str;
+    for(uint8_t i=0; i < 8; i++){
         *pout++ = hex[(*pin>>4)&0xF];
         *pout++ = hex[(*pin++)&0xF];
     }
@@ -151,7 +179,7 @@ static const EXTConfig extcfg = {
   }
 };
 
-#ifdef USE_SHELL
+#if USE_SHELL
 /*===========================================================================*/
 /* Command line related.                                                     */
 /*===========================================================================*/
@@ -208,8 +236,6 @@ static const ShellCommand commands[] = {
   {"mem", cmd_mem},
   {"threads", cmd_threads},
   {"reboot", cmd_reboot},
-//  {"sleep", cmd_sleep},
-//  {"date", cmd_date},
   {NULL, NULL}
 };
 
@@ -311,36 +337,49 @@ static msg_t EventThread(void *arg) {
 								);
         // delay event listener
         if (workcnt && (active & EVENT_MASK(DELAY_ESID)) != 0){
-//    		chprintf((BaseSequentialStream *)&SD2,"delay event fired\r\n");
-    		//
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"delay event fired\r\n");
+#endif
+    		// check sleep switch
     		uint8_t sleep_switch = palReadPad(GPIOB, GPIOB_PIN14);
-//    		chprintf((BaseSequentialStream *)&SD2,"sleep switch: %d\r\n", sleep_switch);
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"sleep switch: %d\r\n", sleep_switch);
+#endif
     		if (sleep_switch && --workcnt == 0){
-//        		chprintf((BaseSequentialStream *)&SD2,"going time sleep mode\r\n");
+#if DEBUG
+        		chprintf((BaseSequentialStream *)&SD2,"going time sleep mode\r\n");
+#endif
     			goto_sleep();
     		}
         }
 
         // wakeup event listener
         if ((active & EVENT_MASK(WAKEUP_ESID)) != 0){
-//    		chprintf((BaseSequentialStream *)&SD2,"wakeup event fired\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"wakeup event fired\r\n");
+#endif
     		palSetPad(GPIOB, GPIOB_PIN13);
-
-    		chThdSleepSeconds(1);
 
     		chBSemSignal(&blinksem);
     		NRFPWRUp();
+    		chThdSleepMilliseconds(100);
     		workcnt = WORKTIME; 	// set working time
     		chBSemSignal(&mainsem);
         }
 
         // main event listener
         if ((active & EVENT_MASK(MAIN_ESID)) != 0){
-//    		chprintf((BaseSequentialStream *)&SD2,"main event fired\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"main event fired\r\n");
+#endif
     		uint8_t sleep_switch = palReadPad(GPIOB, GPIOB_PIN14);
-//    		chprintf((BaseSequentialStream *)&SD2,"sleep switch: %d\r\n", sleep_switch);
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"sleep switch: %d\r\n", sleep_switch);
+#endif
     		if (sleep_switch){
-//        		chprintf((BaseSequentialStream *)&SD2,"going main sleep mode\r\n");
+#if DEBUG
+        		chprintf((BaseSequentialStream *)&SD2,"going to sleep mode\r\n");
+#endif
     			goto_sleep();
     		}
     		else{
@@ -373,8 +412,16 @@ void port_halt(void){
 bool_t nrf_send_msg(MESSAGE_T *msg){
 
 	uint8_t sendcnt = NRF_SEND_MAX;
+#if AES
+	uint8_t buf[MSGLEN];
+	aes_encrypt_ecb(&aes_data, msg, buf);
+#endif
 	while (sendcnt-- > 0){
+#if AES
+		if (NRFSendData((uint8_t *) buf)){
+#else
 		if (NRFSendData((uint8_t *) msg)){
+#endif
 			return TRUE;
 		}
 	}
@@ -399,16 +446,8 @@ int main(void) {
   palSetPadMode(GPIOA, GPIOA_PIN2, PAL_MODE_STM32_ALTERNATE_PUSHPULL);
   palSetPadMode(GPIOA, GPIOA_PIN3, PAL_MODE_INPUT);
 
-  chprintf((BaseSequentialStream *)&SD2,"Remote sensor module, F/W:%s\r\n", FIRMWARE);
-
-#ifdef USE_SHELL
-  /*
-   * Shell manager initialization.
-   */
-  shellInit();
-#endif
-
-  workcnt = WORKTIME; 	// set working time
+  chprintf((BaseSequentialStream *)&SD2,"\r\nRemote sensor module, F/W:%s\r\n", FIRMWARE);
+  workcnt = WORKTIME; 	// set active mode time
 
   // sleep mode switch
   palSetPadMode(GPIOB, GPIOB_PIN14, PAL_MODE_INPUT);
@@ -426,10 +465,6 @@ int main(void) {
    * Enable NRF24L01 interrupts.
    */
   extChannelEnable(&EXTD1, NRF_PORT_IRQ);
-
-  // init event semaphore
-  chBSemInit(&evtsem, TRUE);
-
   /*
    * NRF24L01+ device initialization
    */
@@ -453,39 +488,51 @@ int main(void) {
   chBSemInit(&blinksem, FALSE);
   chThdCreateStatic(waBlinkerThread, sizeof(waBlinkerThread), NORMALPRIO, blinkerThread, NULL);
 
+  // init event semaphore
+  chBSemInit(&evtsem, FALSE);
+
   // Creates event manager thread.
   chThdCreateStatic(waEventThread, sizeof(waEventThread), NORMALPRIO+1, EventThread, NULL);
-
-  // start event manager thread
-  chBSemSignal(&evtsem);
 
   // init 1-wire sensors
   ow_temp_init();
   chBSemInit(&owsem,FALSE);
 
+#if ADC
   // init ADC1
 //  sensors_init();
+#endif
 
-  // init DHT/AM2301 temperature/humidity sensors
+  // init DHT21/22 temperature/humidity sensors
   dht_init();
 
   // init BH1750 light sensor
   bh1750_init();
 
-  // start 60s delay timer
+  // start 1s delay timer
   chVTSet(&delayTimer, MS2ST(DELAYPERIOD), delayTimer_handler, 0);
+
+#if AES
+  aes_initialize(&aes_data, AES_KEY_LENGTH_128_BITS, aes_key, NULL);
+#endif
 
   // start main thread
   chBSemSignal(&mainsem);
+
+#if USE_SHELL
+  /*
+   * Shell manager initialization.
+   */
+  shellInit();
+#endif
 
   /*
    * Normal main() thread activity, in this demo it does nothing except
    * sleeping in a loop and listen for events.
    */
   while (TRUE) {
-#ifdef USE_SHELL
+#if USE_SHELL
     if (!shelltp)
-    	//&& (SDU1.config->usbp->state == USB_ACTIVE))
       shelltp = shellCreate(&shell_cfg, SHELL_WA_SIZE, NORMALPRIO);
     else if (chThdTerminated(shelltp)) {
       chThdRelease(shelltp);    /* Recovers memory of the previous shell.   */
@@ -493,6 +540,8 @@ int main(void) {
     }
 #endif
 	MESSAGE_T msg = {0};
+	msg.sensorID = SENSORID;
+
     uint8_t readcnt;
     bool_t read_ok;
 
@@ -502,103 +551,142 @@ int main(void) {
     int16_t light;
     readcnt = SENSOR_READ_MAX;
     read_ok = FALSE;
-    while (readcnt-- > 0){
-    	read_ok = bh1750_read(&light) == BH1750_NO_ERROR;
+    while (readcnt-- > 0) {
+    	msg.data.cValue[0] = bh1750_read(&light);
+    	read_ok = msg.data.cValue[0] == BH1750_NO_ERROR;
     	if (read_ok) break;
     }
-	msg.msgType = 2;
-	msg.sensorType = 1;
+	msg.msgType = SENSOR_ERROR;
+	msg.sensorType = BH1750;
+	msg.valueType = LIGHT;
     if (read_ok){
-		msg.msgType = 1;
+		msg.msgType = SENSOR_DATA;
 		msg.data.iValue = light;
-		chprintf((BaseSequentialStream *)&SD2,"BH1750, light: %d\r\n", light);
+		chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:BH1750:1:LIGHT:%d\r\n", SENSORID, light);
     }
     else{
-		chprintf((BaseSequentialStream *)&SD2,"BH1750, read error\r\n");
+		chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:BH1750:1:%d\r\n", SENSORID, msg.data.cValue[0]);
     }
 	if (nrf_send_msg(&msg)){
+#if DEBUG
     		chprintf((BaseSequentialStream *)&SD2,"BH1750, send ok\r\n");
+#endif
     }
 	else{
+#if DEBUG
 		chprintf((BaseSequentialStream *)&SD2,"BH1750, send fail\r\n");
+#endif
 	}
 	// DHT_1
     int temperature, humidity;
     readcnt = SENSOR_READ_MAX;
     read_ok = FALSE;
     while (readcnt-- > 0){
-    	read_ok = dht_read(1, &temperature, &humidity) == DHT_NO_ERROR;
+    	msg.data.cValue[0] = dht_read(1, &temperature, &humidity);
+    	read_ok = msg.data.cValue[0] == DHT_NO_ERROR;
     	if (read_ok) break;
     }
-	msg.msgType = 2;
-	msg.sensorType = 2;
+	msg.msgType = SENSOR_ERROR;
+	msg.sensorType = DHT;
 	msg.owkey[0] = 1;
     if (!read_ok){
-        chprintf((BaseSequentialStream *)&SD2,"DHT1, read fail\r\n");
+        chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:DHT:1:%d\r\n", SENSORID, msg.data.cValue[0]);
     	if (nrf_send_msg(&msg)){
-            chprintf((BaseSequentialStream *)&SD2,"DHT1, send ok\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DHT1, error send ok\r\n");
+#endif
     	}
     	else{
-            chprintf((BaseSequentialStream *)&SD2,"DHT1, send fail\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DHT1, error send fail\r\n");
+#endif
     	}
     }
     else{
-        chprintf((BaseSequentialStream *)&SD2,"DHT1, temperature: %.2f, humidity: %.2f\r\n", (float)temperature/10, (float)humidity/10);
-    	msg.msgType = 1;
-		msg.valueType = 0;
+        chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DHT:1:TEMPERATURE:%.2f\r\n", SENSORID, (float)temperature/10);
+        chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DHT:1:HUMIDITY:%.2f\r\n", SENSORID, (float)humidity/10);
+        // send temperature
+    	msg.msgType = SENSOR_DATA;
+		msg.valueType = TEMPERATURE;
 		msg.data.iValue = temperature;
 		if (nrf_send_msg(&msg)){
-    		chprintf((BaseSequentialStream *)&SD2,"DHT1, temperature send ok\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT1, temperature send ok\r\n");
+#endif
 		}
 		else{
-    		chprintf((BaseSequentialStream *)&SD2,"DHT1, temperature send fail\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT1, temperature send fail\r\n");
+#endif
 		}
-		msg.valueType = 1;
+		// send humidity
+		msg.valueType = HUMIDITY;
 		msg.data.iValue = humidity;
 		if (nrf_send_msg(&msg)){
-    		chprintf((BaseSequentialStream *)&SD2,"DHT1, humidity send ok\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT1, humidity send ok\r\n");
+#endif
 		}
 		else{
-    		chprintf((BaseSequentialStream *)&SD2,"DHT1, humidity send fail\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT1, humidity send fail\r\n");
+#endif
 		}
     }
+
     // DHT_2
     readcnt = SENSOR_READ_MAX;
     read_ok = FALSE;
     while (readcnt-- > 0){
-    	read_ok = dht_read(2, &temperature, &humidity) == DHT_NO_ERROR;
+    	msg.data.cValue[0] = dht_read(2, &temperature, &humidity);
+    	read_ok = msg.data.cValue[0] == DHT_NO_ERROR;
     	if (read_ok) break;
     }
-	msg.msgType = 2;
-	msg.sensorType = 2;
+	msg.msgType = SENSOR_ERROR;
+	msg.sensorType = DHT;
 	msg.owkey[0] = 2;
     if (!read_ok){
-        chprintf((BaseSequentialStream *)&SD2,"DHT2, read fail\r\n");
+        chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:DHT:2:%d\r\n", SENSORID, msg.data.cValue[0]);
     	if (nrf_send_msg(&msg)){
-            chprintf((BaseSequentialStream *)&SD2,"DHT2, send ok\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DHT2, error send ok\r\n");
+#endif
     	}
     	else{
-            chprintf((BaseSequentialStream *)&SD2,"DHT2, send fail\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DHT2, error send fail\r\n");
+#endif
     	}
     }
     else{
-        chprintf((BaseSequentialStream *)&SD2,"DHT2, temperature: %.2f, humidity: %.2f\r\n", (float)temperature/10, (float)humidity/10);
-    	msg.msgType = 1;
-		msg.valueType = 0;
+        chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DHT:2:TEMPERATURE:%.2f\r\n", SENSORID, (float)temperature/10);
+        chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DHT:2:HUMIDITY:%.2f\r\n", SENSORID, (float)humidity/10);
+        // send temperature
+    	msg.msgType = SENSOR_DATA;
+		msg.valueType = TEMPERATURE;
 		msg.data.iValue = temperature;
 		if (nrf_send_msg(&msg)){
-    		chprintf((BaseSequentialStream *)&SD2,"DHT2, temperature send ok\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT2, temperature send ok\r\n");
+#endif
 		}
 		else {
-    		chprintf((BaseSequentialStream *)&SD2,"DHT2, temperature send fail\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT2, temperature send fail\r\n");
+#endif
 		}
-		msg.valueType = 1;
+		// send humidity
+		msg.valueType = HUMIDITY;
 		msg.data.iValue = humidity;
 		if (nrf_send_msg(&msg)){
+#if DEBUG
     		chprintf((BaseSequentialStream *)&SD2,"DHT2, humidity send ok\r\n");
+#endif
 		}
 		else{
-    		chprintf((BaseSequentialStream *)&SD2,"DHT2, humidity send fail\r\n");
+#if DEBUG
+			chprintf((BaseSequentialStream *)&SD2,"DHT2, humidity send fail\r\n");
+#endif
 		}
     }
 
@@ -606,38 +694,52 @@ int main(void) {
     readcnt = SENSOR_READ_MAX;
     read_ok = FALSE;
     while (readcnt-- > 0){
-    	read_ok = owtemp_read() == OW_TEMP_NO_ERROR;
+    	msg.data.cValue[0] = owtemp_read();
+    	read_ok = msg.data.cValue[0] == OW_TEMP_NO_ERROR;
     	if (read_ok) break;
     }
-	msg.msgType = 2;
-	msg.sensorType = 0;
+	msg.msgType = SENSOR_ERROR;
+	msg.sensorType = DS1820;
+	msg.valueType = TEMPERATURE;
     if (!read_ok){
-		chprintf((BaseSequentialStream *)&SD2,"DS1820, read fail\r\n");
+		chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:DS1820:0:%d\r\n", SENSORID, msg.data.cValue[0]);
     	if (nrf_send_msg(&msg)){
-    		chprintf((BaseSequentialStream *)&SD2,"DS1820, send ok\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send ok\r\n");
+#endif
     	}
     	else{
-    		chprintf((BaseSequentialStream *)&SD2,"DS1820, send fail\r\n");
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send fail\r\n");
+#endif
     	}
     }
     else{
 	    for (uint8_t i=0; i < ARRAY_LEN(ow_temp_read.owtemp); i++){
 	    	if (ow_temp_read.owtemp[i].key[0] == 0x28){	// DS1820B
-	    		chprintf((BaseSequentialStream *)&SD2,"DS1820, temperature: %.2f\r\n", ow_temp_read.owtemp[i].value);
-	    		msg.msgType = 1;
+	    		uint8_t owaddr[17] = {0};
+	    		owkey_hexstr(ow_temp_read.owtemp[i].key, owaddr);
+	    		msg.msgType = SENSOR_DATA;
 	    		memcpy(&(msg.owkey),&(ow_temp_read.owtemp[i].key),sizeof(msg.owkey));
 	    		msg.data.fValue = ow_temp_read.owtemp[i].value;
+	    		chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DS1820:%s:TEMPERATURE:%.2f\r\n", SENSORID, owaddr, ow_temp_read.owtemp[i].value);
 	    		if (nrf_send_msg(&msg)){
-		    		chprintf((BaseSequentialStream *)&SD2,"DS1820, send ok\r\n");
+#if DEBUG
+	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send ok\r\n", owaddr);
+#endif
 	    		}
 	    		else{
-		    		chprintf((BaseSequentialStream *)&SD2,"DS1820, send fail\r\n");
+#if DEBUG
+	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send fail\r\n", owaddr);
+#endif
 	    		}
 	    	}
 	    }
     }
+
+#if ADC
     // BATTERY
-/*	readcnt = SENSOR_READ_MAX;
+	readcnt = SENSOR_READ_MAX;
     read_ok = FALSE;
     while (readcnt-- > 0){
     	read_ok = sensors_read() == ADC_NO_ERROR;
@@ -663,8 +765,8 @@ int main(void) {
 		if (nrf_send_msg(&msg)){
     		chprintf((BaseSequentialStream *)&SD2,"BATTERY, send ok\r\n");
 		}
-*/
-/*    	// other ADC
+
+    	// other ADC
 	    for (uint8_t i=0; i < SENSORSNUM; i++){
 	  		chprintf((BaseSequentialStream *)&SD2,"ADC, sensor[%d]: %d\r\n", i, sensors.sensor[i].value);
 	    	msg.msgType = 1;
@@ -675,9 +777,10 @@ int main(void) {
         		chprintf((BaseSequentialStream *)&SD2,"SENSOR[%d], send ok\r\n", i);
     		}
 	    }
-    }*/
+    }
+#endif
 
     chEvtBroadcastFlags(&main_evsrc, (flagsmask_t)0);
-    chThdSleepMilliseconds(100);
+    chThdSleepMilliseconds(2000);
   }
 }

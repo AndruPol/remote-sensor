@@ -121,6 +121,14 @@
 #define VAL_GPIOBODR            0xFFFFFFFF
 
 /*
+ * Port C setup.
+ * Everything input with pull-up except:
+ */
+#define VAL_GPIOCCRL            0x88888888      /*  PC7...PC0 */
+#define VAL_GPIOCCRH            0x88888888      /* PC15...PC8 */
+#define VAL_GPIOCODR            0xFFFFFFFF
+
+/*
  * USB bus activation macro, required by the USB driver.
  */
 //#define usb_lld_connect_bus(usbp) palClearPad(GPIOC, GPIOC_USB_DISC)
