@@ -1,5 +1,5 @@
 /*
- *  DHT21/DHT22 & AM2301/AM2302 driver
+ *  DHT21/DHT22 driver
  */
 
 #include "ch.h"
@@ -8,9 +8,9 @@
 #include "am2302.h"
 
 #define DHT_BIT_TIMEOUT_US 	(80 * 4) /* one bit timeout */
-#define DHT_START_PULSE_MS 	2
+#define DHT_START_PULSE_MS 	18
 #define DHT_IRQ_TIMEOUT_MS 	2 		/* irq timeout */
-#define DHT_PKT_SIZE 			5
+#define DHT_PKT_SIZE 		5
 #define DHT_PKT_TIMEOUT_MS 	10
 
 #define DHT_CHANNEL1_GPIO		GPIOA /* channel 1 GPIO */
@@ -89,6 +89,7 @@ static msg_t DHTThread(void *arg) {
 
   (void)arg;
   chRegSetThreadName("DHTThd");
+
   chBSemInit(&cb_sem, TRUE);
   while (TRUE) {
 	/* wait for read request */
@@ -116,30 +117,26 @@ static msg_t DHTThread(void *arg) {
 		icuStart(&ICUD2, &icucfgch2);
 	}
 
-	AFIO->MAPR |= AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
-	AFIO->MAPR |= AFIO_MAPR_TIM2_REMAP_FULLREMAP;
-
-	icuEnable(&ICUD2);
 	if (req->channel == 1){
 		palSetPadMode(DHT_CHANNEL1_GPIO, DHT_CHANNEL1_PIN, PAL_MODE_INPUT);
 	}
 	else if (req->channel == 2){
 		palSetPadMode(DHT_CHANNEL2_GPIO, DHT_CHANNEL2_PIN, PAL_MODE_INPUT);
 	}
+	icuEnable(&ICUD2);
 
 	/* skip first falling edge */
 	int i;
-	for(i = 0; i < 2; i++) {
-		/* IRQ timeout or receive timeout */
-		if(chBSemWaitTimeout(&cb_sem, MS2ST(DHT_IRQ_TIMEOUT_MS)) == RDY_TIMEOUT) {
-			req->error = DHT_IRQ_TIMEOUT;
-			goto reply;
-		}
-		if(!icu_data.period) {
-			req->error = DHT_TIMEOUT;
-			goto reply;
-		}
+	// IRQ timeout or receive timeout
+	if(chBSemWaitTimeout(&cb_sem, MS2ST(DHT_IRQ_TIMEOUT_MS)) == RDY_TIMEOUT) {
+		req->error = DHT_IRQ_TIMEOUT;
+		goto reply;
 	}
+	if(!icu_data.period) {
+		req->error = DHT_TIMEOUT;
+		goto reply;
+	}
+
 	/* start sequence received */
 	if(!PERIOD_OK(&icu_data, 80, 80)) {
 		req->error = DHT_DECODE_ERROR;
@@ -209,19 +206,27 @@ dht_error_t dht_read(uint8_t channel, int *temperature, int *humidity) {
 		return DHT_CHECKSUM_ERROR;
 	}
 
-	/* read 16 bit humidity value */
-	*humidity = ((unsigned int)rd.data[0] << 8) |
-				(unsigned int)rd.data[1];
+	if (rd.data[1] == 0 && rd.data[3] == 0) {	// DHT11
+		*humidity = ((unsigned int)rd.data[0]);
+		*temperature = ((unsigned int)rd.data[2]);
+	}
+	else {	// DHT21/22
+		/* read 16 bit humidity value */
+		*humidity = ((unsigned int)rd.data[0] << 8) |
+					(unsigned int)rd.data[1];
 
-	/* read 16 bit temperature value */
-	int val = ((unsigned int)rd.data[2] << 8) |
-				(unsigned int)rd.data[3];
-	*temperature = val & 0x8000 ? -(val & ~0x8000) : val;
-
+		/* read 16 bit temperature value */
+		int val = ((unsigned int)rd.data[2] << 8) |
+					(unsigned int)rd.data[3];
+		*temperature = val & 0x8000 ? -(val & ~0x8000) : val;
+	}
 	return DHT_NO_ERROR;
 }
 
 void dht_init(void){
+	AFIO->MAPR |= AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
+	AFIO->MAPR |= AFIO_MAPR_TIM2_REMAP_FULLREMAP;
+
 	chBSemInit(&icusem, FALSE);
 	DHTThread_p = chThdCreateStatic(waDHTThread, sizeof(waDHTThread), DHT_PRIO, DHTThread, NULL);
 }

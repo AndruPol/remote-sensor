@@ -58,7 +58,7 @@ endif
 PROJECT = rsensor
 
 # Imported source files and paths
-CHIBIOS = ../chibios/ChibiOS_2.6.4
+CHIBIOS = ../chibios/ChibiOS_2.6.5
 include STM32F103C_MINI/board.mk
 include $(CHIBIOS)/os/hal/platforms/STM32F1xx/platform.mk
 include $(CHIBIOS)/os/hal/hal.mk
