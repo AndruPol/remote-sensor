@@ -37,6 +37,7 @@
 #define USE_SHELL	0	// ChibiOS shell use
 #define ADC			0
 #define AES			1	// encrypt message
+#define STANDBY		1	// standby power mode
 
 #if USE_SHELL
 #include "shell.h"
@@ -53,8 +54,6 @@
 static aes_data_t aes_data;
 #endif
 
-static VirtualTimer delayTimer;
-static EVENTSOURCE_DECL(delay_evsrc);
 static EVENTSOURCE_DECL(main_evsrc);
 static EVENTSOURCE_DECL(wakeup_evsrc);
 static BinarySemaphore mainsem, blinksem;
@@ -70,10 +69,8 @@ const OneWireConfig owCfg = { .dqPort = GPIOA,
 				     	 	   .uartd = &UARTD1
 							};
 
-static uint8_t workcnt;		// work mode delay counter
-
 // convert 5 byte array NRF24L01 address to string: AFAFAFAFAF\0
-void addr_hexstr(uint8_t *addr, uint8_t *str){
+static void addr_hexstr(uint8_t *addr, uint8_t *str){
     uint8_t *pin = addr;
     const char *hex = "0123456789ABCDEF";
     uint8_t *pout = str;
@@ -85,7 +82,7 @@ void addr_hexstr(uint8_t *addr, uint8_t *str){
 }
 
 // convert 1-wire 8 bytes address to char[17]
-void owkey_hexstr(uint8_t *addr, uint8_t *str){
+static void owkey_hexstr(uint8_t *addr, uint8_t *str){
     uint8_t *pin = addr;
     const char *hex = "0123456789ABCDEF";
     uint8_t *pout = str;
@@ -94,15 +91,6 @@ void owkey_hexstr(uint8_t *addr, uint8_t *str){
         *pout++ = hex[(*pin++)&0xF];
     }
     *pout = 0;
-}
-
-// delayTimer callback
-void delayTimer_handler(void *arg){
-	(void)arg;
-	chSysLockFromIsr();
-	chEvtBroadcastFlagsI(&delay_evsrc, (flagsmask_t)0);
-	chVTSetI(&delayTimer, MS2ST(DELAYPERIOD), delayTimer_handler, 0);
-	chSysUnlockFromIsr();
 }
 
 /*
@@ -121,7 +109,7 @@ static void extcbnrf(EXTDriver *extp, expchannel_t channel) {
 }
 
 /*===========================================================================*/
-/* Wakeup related.                                                     */
+/* Wakeup related.                                                    		 */
 /*===========================================================================*/
 static RTCTime timespec;
 static RTCAlarm alarmspec;
@@ -135,11 +123,11 @@ static void rtc_cb(RTCDriver *rtcp, rtcevent_t event) {
 
   switch (event) {
   case RTC_EVENT_OVERFLOW:
-    break;
+	  break;
   case RTC_EVENT_SECOND:
-    break;
+	  break;
   case RTC_EVENT_ALARM:
-    break;
+	  break;
   }
 }
 
@@ -149,11 +137,13 @@ static void extcbwakeup(EXTDriver *extp, expchannel_t channel) {
   (void)extp;
   (void)channel;
 
+#if (STANDBY == FALSE)
   chSysLockFromIsr();
   stm32_clock_init();
   chEvtBroadcastFlagsI(&wakeup_evsrc, (flagsmask_t)0);
   extChannelDisableI(&EXTD1, 17);
   chSysUnlockFromIsr();
+#endif
 }
 
 static const EXTConfig extcfg = {
@@ -280,8 +270,9 @@ void goto_sleep(void){
    */
   NRFPWRDown();
 
-  chThdSleepMilliseconds(100);
+  chThdSleepMilliseconds(2);
 
+  chSysLock();
   rtcGetTime(&RTCD1, &timespec);
   alarmspec.tv_sec = timespec.tv_sec + SLEEPTIME;
   rtcSetAlarm(&RTCD1, 0, &alarmspec);
@@ -289,17 +280,17 @@ void goto_sleep(void){
 
   extChannelEnable(&EXTD1, 17);
 
-/* STOP mode */
+#if STANDBY
+  /* STANDBY mode */
+  PWR->CR |= (PWR_CR_PDDS | PWR_CR_LPDS | PWR_CR_CSBF | PWR_CR_CWUF);
+#else
+  /* STOP mode */
   PWR->CR |= (PWR_CR_LPDS | PWR_CR_CSBF | PWR_CR_CWUF);
   PWR->CR &= ~PWR_CR_PDDS;
-
-/* STANDBY mode
-  PWR->CR |= (PWR_CR_PDDS | PWR_CR_CSBF | PWR_CR_CWUF);
-*/
+#endif
 
   SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
   __WFI();
-  SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk;
 }
 
 static BinarySemaphore evtsem;
@@ -312,7 +303,6 @@ __attribute__((noreturn))
 static msg_t EventThread(void *arg) {
 	(void)arg;
 	enum{
-	  	DELAY_ESID,		// id delay_evsrc
 	  	WAKEUP_ESID,	// id wakeup_evsrc
 	  	MAIN_ESID		// id main_evsrc
   	  	};
@@ -321,8 +311,6 @@ static msg_t EventThread(void *arg) {
 
 	chRegSetThreadName("eventThd");
 
-	chEvtInit(&delay_evsrc);
-	chEvtRegister(&delay_evsrc, &delay_el, DELAY_ESID);
 	chEvtInit(&wakeup_evsrc);
 	chEvtRegister(&wakeup_evsrc, &wakeup_el, WAKEUP_ESID);
 	chEvtInit(&main_evsrc);
@@ -331,39 +319,21 @@ static msg_t EventThread(void *arg) {
 	while (TRUE) {
 	    chBSemWait(&evtsem);
 		active = chEvtWaitAny(
-								EVENT_MASK(DELAY_ESID) |
 								EVENT_MASK(WAKEUP_ESID) |
 								EVENT_MASK(MAIN_ESID)
 								);
-        // delay event listener
-        if (workcnt && (active & EVENT_MASK(DELAY_ESID)) != 0){
-#if DEBUG
-    		chprintf((BaseSequentialStream *)&SD2,"delay event fired\r\n");
-#endif
-    		// check sleep switch
-    		uint8_t sleep_switch = palReadPad(GPIOB, GPIOB_PIN14);
-#if DEBUG
-    		chprintf((BaseSequentialStream *)&SD2,"sleep switch: %d\r\n", sleep_switch);
-#endif
-    		if (sleep_switch && --workcnt == 0){
-#if DEBUG
-        		chprintf((BaseSequentialStream *)&SD2,"going time sleep mode\r\n");
-#endif
-    			goto_sleep();
-    		}
-        }
 
-        // wakeup event listener
+		// wakeup event listener
         if ((active & EVENT_MASK(WAKEUP_ESID)) != 0){
 #if DEBUG
     		chprintf((BaseSequentialStream *)&SD2,"wakeup event fired\r\n");
 #endif
+#if (STANDBY == FALSE)
     		palSetPad(GPIOB, GPIOB_PIN13);
-
     		chBSemSignal(&blinksem);
     		NRFPWRUp();
     		chThdSleepMilliseconds(100);
-    		workcnt = WORKTIME; 	// set working time
+#endif
     		chBSemSignal(&mainsem);
         }
 
@@ -388,7 +358,6 @@ static msg_t EventThread(void *arg) {
         }
 
         chSysLock();
-    	chEvtGetAndClearFlagsI(&delay_el);
     	chEvtGetAndClearFlagsI(&wakeup_el);
     	chEvtGetAndClearFlagsI(&main_el);
     	chSysUnlock();
@@ -447,11 +416,9 @@ int main(void) {
   palSetPadMode(GPIOA, GPIOA_PIN3, PAL_MODE_INPUT);
 
   chprintf((BaseSequentialStream *)&SD2,"\r\nRemote sensor module, F/W:%s\r\n", FIRMWARE);
-  workcnt = WORKTIME; 	// set active mode time
 
   // sleep mode switch
   palSetPadMode(GPIOB, GPIOB_PIN14, PAL_MODE_INPUT);
-  chBSemInit(&mainsem, TRUE);
 
   /*
    * Setup NRF24L01 IRQ pad.
@@ -509,15 +476,12 @@ int main(void) {
   // init BH1750 light sensor
   bh1750_init();
 
-  // start 1s delay timer
-  chVTSet(&delayTimer, MS2ST(DELAYPERIOD), delayTimer_handler, 0);
-
 #if AES
   aes_initialize(&aes_data, AES_KEY_LENGTH_128_BITS, aes_key, NULL);
 #endif
 
   // start main thread
-  chBSemSignal(&mainsem);
+  chBSemInit(&mainsem, FALSE);
 
 #if USE_SHELL
   /*

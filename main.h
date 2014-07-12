@@ -11,10 +11,8 @@
 extern "C" {
 #endif
 
-#define	FIRMWARE		"0.3"	// версия прошивки
-#define DELAYPERIOD		1000	// интервал секундного таймера задержки, мсек
+#define	FIRMWARE		"0.4"	// версия прошивки
 #define SLEEPTIME		720		// время режима пониженного энергопотребления, сек
-#define WORKTIME		5		// максимальное время работы в активном режиме, сек
 #define SENSORID		0		// this sensor ID
 
 typedef enum {
@@ -54,8 +52,6 @@ struct MESSAGE{
 		uint8_t cValue[4];
 	} data;
 };
-
-void addr_hexstr(uint8_t *addr, uint8_t *str);
 
 #ifdef __cplusplus
 }
