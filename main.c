@@ -417,6 +417,10 @@ int main(void) {
 
   chprintf((BaseSequentialStream *)&SD2,"\r\nRemote sensor module, F/W:%s\r\n", FIRMWARE);
 
+  // sensor power pin PAL mode
+  palSetPadMode(GPIOB, GPIOB_PIN13, PAL_MODE_OUTPUT_PUSHPULL);
+  palSetPad(GPIOB, GPIOB_PIN13);
+
   // sleep mode switch
   palSetPadMode(GPIOB, GPIOB_PIN14, PAL_MODE_INPUT);
 
@@ -442,10 +446,6 @@ int main(void) {
   addr_hexstr(rxaddr, rxaddrstr);
   addr_hexstr(txaddr, txaddrstr);
   chprintf((BaseSequentialStream *)&SD2,"CHANNEL: %d, TX ADDR:%s, RX ADDR:%s\r\n", CHANNEL, txaddrstr, rxaddrstr);
-
-  // sensor power pin PAL mode
-  palSetPadMode(GPIOB, GPIOB_PIN13, PAL_MODE_OUTPUT_PUSHPULL);
-  palSetPad(GPIOB, GPIOB_PIN13);
 
   // LED pin PAL mode
   palSetPadMode(GPIOB, GPIOB_PIN15, PAL_MODE_OUTPUT_PUSHPULL);
@@ -541,6 +541,57 @@ int main(void) {
 		chprintf((BaseSequentialStream *)&SD2,"BH1750, send fail\r\n");
 #endif
 	}
+
+    // DS1820B
+    readcnt = SENSOR_READ_MAX;
+    read_ok = FALSE;
+    while (readcnt-- > 0){
+    	msg.data.cValue[0] = owtemp_read();
+    	read_ok = msg.data.cValue[0] == OW_TEMP_NO_ERROR;
+    	if (read_ok) break;
+    }
+	msg.msgType = SENSOR_ERROR;
+	msg.sensorType = DS1820;
+	msg.valueType = TEMPERATURE;
+    if (!read_ok){
+		chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:DS1820:0:%d\r\n", SENSORID, msg.data.cValue[0]);
+    	if (nrf_send_msg(&msg)){
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send ok\r\n");
+#endif
+    	}
+    	else{
+#if DEBUG
+    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send fail\r\n");
+#endif
+    	}
+    }
+    else{
+	    for (uint8_t i=0; i < ARRAY_LEN(ow_temp_read.owtemp); i++){
+	    	if (ow_temp_read.owtemp[i].key[0] == 0x28){	// DS1820B
+	    		uint8_t owaddr[17] = {0};
+	    		owkey_hexstr(ow_temp_read.owtemp[i].key, owaddr);
+	    		msg.msgType = SENSOR_DATA;
+	    		memcpy(&(msg.owkey),&(ow_temp_read.owtemp[i].key),sizeof(msg.owkey));
+	    		msg.data.fValue = ow_temp_read.owtemp[i].value;
+	    		chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DS1820:%s:TEMPERATURE:%.2f\r\n", SENSORID, owaddr, ow_temp_read.owtemp[i].value);
+	    		if (nrf_send_msg(&msg)){
+#if DEBUG
+	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send ok\r\n", owaddr);
+#endif
+	    		}
+	    		else{
+#if DEBUG
+	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send fail\r\n", owaddr);
+#endif
+	    		}
+	    	}
+	    }
+    }
+
+    // DHT21 power on timeout
+    chThdSleepMilliseconds(1000);
+
 	// DHT_1
     int temperature, humidity;
     readcnt = SENSOR_READ_MAX;
@@ -652,53 +703,6 @@ int main(void) {
 			chprintf((BaseSequentialStream *)&SD2,"DHT2, humidity send fail\r\n");
 #endif
 		}
-    }
-
-    // DS1820B
-    readcnt = SENSOR_READ_MAX;
-    read_ok = FALSE;
-    while (readcnt-- > 0){
-    	msg.data.cValue[0] = owtemp_read();
-    	read_ok = msg.data.cValue[0] == OW_TEMP_NO_ERROR;
-    	if (read_ok) break;
-    }
-	msg.msgType = SENSOR_ERROR;
-	msg.sensorType = DS1820;
-	msg.valueType = TEMPERATURE;
-    if (!read_ok){
-		chprintf((BaseSequentialStream *)&SD2,"ERROR:%d:DS1820:0:%d\r\n", SENSORID, msg.data.cValue[0]);
-    	if (nrf_send_msg(&msg)){
-#if DEBUG
-    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send ok\r\n");
-#endif
-    	}
-    	else{
-#if DEBUG
-    		chprintf((BaseSequentialStream *)&SD2,"DS1820, error send fail\r\n");
-#endif
-    	}
-    }
-    else{
-	    for (uint8_t i=0; i < ARRAY_LEN(ow_temp_read.owtemp); i++){
-	    	if (ow_temp_read.owtemp[i].key[0] == 0x28){	// DS1820B
-	    		uint8_t owaddr[17] = {0};
-	    		owkey_hexstr(ow_temp_read.owtemp[i].key, owaddr);
-	    		msg.msgType = SENSOR_DATA;
-	    		memcpy(&(msg.owkey),&(ow_temp_read.owtemp[i].key),sizeof(msg.owkey));
-	    		msg.data.fValue = ow_temp_read.owtemp[i].value;
-	    		chprintf((BaseSequentialStream *)&SD2,"SENSOR:%d:DS1820:%s:TEMPERATURE:%.2f\r\n", SENSORID, owaddr, ow_temp_read.owtemp[i].value);
-	    		if (nrf_send_msg(&msg)){
-#if DEBUG
-	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send ok\r\n", owaddr);
-#endif
-	    		}
-	    		else{
-#if DEBUG
-	    			chprintf((BaseSequentialStream *)&SD2,"DS1820[%s], temperature send fail\r\n", owaddr);
-#endif
-	    		}
-	    	}
-	    }
     }
 
 #if ADC

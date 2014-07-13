@@ -99,6 +99,8 @@ static msg_t DHTThread(void *arg) {
 	req = (dht_read_t *) chMsgGet(tp);
 	chMsgRelease(tp, (msg_t) req);
 
+	AFIO->MAPR |= AFIO_MAPR_TIM2_REMAP_NOREMAP;
+
 	// set DHT pin low on 2ms
 	if (req->channel == 1){
 		palSetPadMode(DHT_CHANNEL1_GPIO, DHT_CHANNEL1_PIN, PAL_MODE_OUTPUT_OPENDRAIN);
@@ -109,6 +111,8 @@ static msg_t DHTThread(void *arg) {
 		palClearPad(DHT_CHANNEL2_GPIO, DHT_CHANNEL2_PIN);
 	}
 	chThdSleepMilliseconds(DHT_START_PULSE_MS);
+
+	AFIO->MAPR |= AFIO_MAPR_TIM2_REMAP_FULLREMAP;
 
 	if (req->channel == 1){
 		icuStart(&ICUD2, &icucfgch1);
@@ -225,7 +229,6 @@ dht_error_t dht_read(uint8_t channel, int *temperature, int *humidity) {
 
 void dht_init(void){
 	AFIO->MAPR |= AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
-	AFIO->MAPR |= AFIO_MAPR_TIM2_REMAP_FULLREMAP;
 
 	chBSemInit(&icusem, FALSE);
 	DHTThread_p = chThdCreateStatic(waDHTThread, sizeof(waDHTThread), DHT_PRIO, DHTThread, NULL);
